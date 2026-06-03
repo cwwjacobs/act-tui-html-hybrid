@@ -1,0 +1,28 @@
+[project]
+name = "act-tui-html-hybrid"
+version = "0.0.1"
+description = "ACT TUI/HTML Hybrid viewer scaffold - observation surface only for ACT-MCE"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+    {name = "cwwjacobs"},
+]
+dependencies = []
+
+[project.optional-dependencies]
+tui = ["textual>=0.40.0"]
+html = []  # future: may add jinja or similar for templates
+dev = ["pytest>=7.0", "textual>=0.40.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-q --tb=short"
+
+[tool.ruff]
+line-length = 100
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
