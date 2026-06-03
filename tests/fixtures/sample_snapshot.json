@@ -1,0 +1,192 @@
+{
+  "_meta": {
+    "source": "SAMPLE_FIXTURE_PREVIEW_ONLY",
+    "note": "This is synthetic sample data for offline preview, layout testing, and viewer development. It does NOT represent live ACT-MCE engine state, gate results, or receipts. Do not use for operational decisions, readiness assessment, or acceptance. For demonstration of read-only surfaces only.",
+    "schema": "act_tui_html_hybrid.fixture.v0_1",
+    "generated_for": "Phase 2 visual refinement"
+  },
+  "health": {
+    "schema_version": "act_viewer_server.health.v0_1",
+    "status": "OK",
+    "service": "ACT-Viewer Localhost Read Server (SIMULATED)",
+    "read_only": true,
+    "note": "SIMULATED - fixture data"
+  },
+  "run_current": {
+    "schema_version": "act_viewer.localhost.run_current.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "stage_id": "STAGE_1",
+    "phase_id": "PHASE_0",
+    "source": "fixture_sample_preview",
+    "status": "BLOCKED",
+    "viewer_snapshot": {
+      "schema_version": "act_viewer.viewer_snapshot.v0_1",
+      "run_id": "RUN_SAMPLE_PREVIEW_001",
+      "kernel": "ACT-MCE Stage 1 admission (SAMPLE)",
+      "status": "BLOCKED",
+      "current_stage": "STAGE_1",
+      "current_phase": "PHASE_0",
+      "receipts": [
+        {
+          "schema_version": "act_viewer.receipt_summary.v0_1",
+          "receipt_id": "stage_1_receipt",
+          "receipt_type": "Stage1Receipt",
+          "run_id": "RUN_SAMPLE_PREVIEW_001",
+          "status_claim": "MISSING",
+          "path": "",
+          "summary": "Sample: stage_1_receipt.json not present in fixture (simulates missing engine artifact)",
+          "warnings": [],
+          "blockers": ["stage_1_receipt.json"],
+          "metadata": {}
+        }
+      ],
+      "gates": [
+        {
+          "schema_version": "act_viewer.gate_summary.v0_1",
+          "gate_id": "stage_1_admission_gate",
+          "gate_type": "Stage1AdmissionGate",
+          "run_id": "RUN_SAMPLE_PREVIEW_001",
+          "status": "BLOCKED",
+          "summary": "Sample fixture: missing required artifacts for Stage 1",
+          "warnings": [],
+          "blockers": ["stage_1_receipt.json", "contractcard_binding"],
+          "metadata": {}
+        }
+      ],
+      "traces": [],
+      "warnings": [
+        {
+          "warning_id": "sample_preview",
+          "message": "This is SAMPLE PREVIEW data only. Engine gate result is simulated.",
+          "severity": "INFO",
+          "subject": "fixture",
+          "metadata": {}
+        }
+      ],
+      "alerts": [],
+      "next_actions": [
+        "This is preview only. In real use: Run the engine-owned Stage 1 admission gate."
+      ],
+      "metadata": {
+        "stage_2_allowed": false,
+        "stage_1_ready": false,
+        "admission_stage": "STAGE_1"
+      }
+    },
+    "warnings": [
+      "SAMPLE PREVIEW: No engine-owned Stage 1 gate result (simulated BLOCKED state)."
+    ]
+  },
+  "stats": {
+    "schema_version": "act_viewer.localhost.run_stats.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "counts": {
+      "events": 12,
+      "receipts": 1,
+      "gates": 1,
+      "traces": 0,
+      "warnings": 2
+    },
+    "warnings": [
+      "SAMPLE: counts are illustrative only"
+    ]
+  },
+  "receipts": {
+    "schema_version": "act_viewer.localhost.receipts.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "receipts": [
+      {
+        "schema_version": "act_viewer.receipt_summary.v0_1",
+        "receipt_id": "stage_1_receipt",
+        "receipt_type": "Stage1Receipt",
+        "run_id": "RUN_SAMPLE_PREVIEW_001",
+        "status_claim": "MISSING",
+        "path": "",
+        "summary": "Sample preview: receipt not present (simulates engine state)",
+        "warnings": [],
+        "blockers": ["stage_1_receipt.json"],
+        "metadata": {
+          "fixture": true
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "gates": {
+    "schema_version": "act_viewer.localhost.gates.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "gates": [
+      {
+        "schema_version": "act_viewer.gate_summary.v0_1",
+        "gate_id": "stage_1_admission_gate",
+        "gate_type": "Stage1AdmissionGate",
+        "run_id": "RUN_SAMPLE_PREVIEW_001",
+        "status": "BLOCKED",
+        "summary": "Sample: Stage 1 receipt is missing.",
+        "warnings": [],
+        "blockers": ["stage_1_receipt.json"],
+        "metadata": {
+          "fixture": true,
+          "engine_gate_result": {
+            "schema_version": "act_mce.stage_1_gate_result.v0_1",
+            "gate_name": "stage_1_admission_gate",
+            "status": "BLOCKED",
+            "ready": false,
+            "stage_1_ready": false,
+            "stage_2_allowed": false,
+            "reason": "Sample fixture data - missing artifacts (preview only)"
+          }
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "events": {
+    "schema_version": "act_viewer.localhost.events.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "events": [
+      {"event_id": "e1", "ts": "2026-06-03T10:00:00Z", "type": "RUN_STARTED", "message": "Sample run initialized (preview)"},
+      {"event_id": "e2", "ts": "2026-06-03T10:01:00Z", "type": "GATE_EVALUATED", "message": "Stage 1 gate evaluated as BLOCKED (sample)"}
+    ],
+    "warnings": ["Events in fixture are illustrative samples only."]
+  },
+  "traces": {
+    "schema_version": "act_viewer.localhost.traces.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "traces": [],
+    "warnings": []
+  },
+  "warnings": {
+    "schema_version": "act_viewer.localhost.warnings.v0_1",
+    "run_id": "RUN_SAMPLE_PREVIEW_001",
+    "admission_stage": "STAGE_1",
+    "source": "fixture_sample_preview",
+    "warnings": [
+      {
+        "warning_id": "sample_preview",
+        "message": "SAMPLE PREVIEW DATA ONLY - not from live engine. Used for viewer layout testing.",
+        "severity": "INFO",
+        "subject": "fixture_loader",
+        "metadata": {"preview": true}
+      },
+      {
+        "warning_id": "missing_artifact",
+        "message": "stage_1_receipt.json is missing (simulated blocker)",
+        "severity": "WARN",
+        "subject": "stage_1_admission_gate",
+        "metadata": {}
+      }
+    ]
+  }
+}

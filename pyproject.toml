@@ -1,13 +1,17 @@
 [project]
 name = "act-tui-html-hybrid"
-version = "0.0.1"
-description = "ACT TUI/HTML Hybrid viewer scaffold - observation surface only for ACT-MCE"
+version = "0.0.2"
+description = "ACT TUI/HTML Hybrid viewer (Phase 2) - observation-only visual/readability refinement for ACT-MCE read surface"
 readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     {name = "cwwjacobs"},
 ]
 dependencies = []
+
+[project.scripts]
+act-tui-viewer = "act_tui_html_hybrid.tui:main"
+act-html-export = "act_tui_html_hybrid.html_export:main"
 
 [project.optional-dependencies]
 tui = ["textual>=0.40.0"]

@@ -1,9 +1,14 @@
 # ACT TUI/HTML Hybrid — Read Surface Contract
 
 ## Purpose
-Defines the narrow, read-only HTTP surface that the ACT TUI/HTML Hybrid viewer is permitted to consume from an ACT-MCE localhost read server.
+Defines the narrow, read-only HTTP surface (the "read surface") that the ACT TUI/HTML Hybrid viewer is permitted to consume from an ACT-MCE localhost read server.
 
-The contract exists to keep the viewer as a pure observer. The read server is a thin relay serving engine-owned artifacts. The viewer never owns truth.
+**This read surface contract is always observation-only (GET consumption only).** The read server is a thin relay serving engine-owned artifacts. The viewer never owns truth via the read surface.
+
+**Overall viewer roles (distinguished):**
+- Current scaffold phase (this repo): TUI is read/render-only (no request submission yet). HTML is view-only (stats/graphs/readouts/exports).
+- Future target (TUI): may become operator request/input surface, submitting requests *only* through a future gated Engine command API. Engine owns execution, gates, decisions, receipts. TUI never directly executes/mutates/bypasses/writes/self-approves.
+- HTML remains view-only.
 
 ## Base URL
 Default: `http://127.0.0.1:8765`
@@ -57,13 +62,14 @@ Endpoints and payloads are versioned via `schema_version` strings (e.g. `act_vie
 
 ## Enforcement
 - Static analysis in tests: source must contain no POST/PUT/PATCH/DELETE, no "act_mce.gates", no "capability", no "runner", no "execution".
-- Runtime: client uses only `urllib.request.Request(..., method="GET")`.
-- TUI and HTML layers only call the 8 read methods and render.
-- README and docs/BOUNDARY.md restate the observation-only rule.
+- Runtime: client uses only `urllib.request.Request(..., method="GET")` for live paths. Fixture loading is isolated preview path. (No write paths exist.)
+- **Current scaffold:** TUI and HTML layers only call read methods (or fixture load), render improved layouts, and expose only read subcommands in CLI. No command submission / input surfaces implemented.
+- README and docs/BOUNDARY.md now distinguish: current read-only scaffold (TUI read/render, HTML view-only) vs. future gated TUI request/input surface (through Engine API). Permanent forbids documented.
+- Phase 2 adds visual refinements and CLI (read-only today) but does not relax any prohibitions and does not implement request submission. Fixtures are for offline preview only and carry explicit SAMPLE markers.
 
 ## Related
 - docs/BOUNDARY.md
 - The read server implementation (in ACT-MCE) under `act_viewer_server/`
 - Cards: card_localhost_backend_routes_only, card_event_stream_read_only, card_viewer_observe_request_only, card_html_telemetry_only, card_textual_operator_surface, card_browser_safety_boundary
 
-This contract is observation surface only. Operator review of engine gate results remains authoritative.
+This *read surface* contract is observation-only (GET consumption). The overall TUI (current scaffold: read/render-only; future: gated requests only) and HTML (view-only) obey the architecture: Engine decides, gates, executes, emits receipts. TUI never owns truth, execution, or acceptance. Operator review of engine gate results remains authoritative.

@@ -12,6 +12,7 @@ Operator acceptance remains final.
 import json
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -112,4 +113,61 @@ class ReadSurfaceClient:
             "receipts": self.receipts(),
             "gates": self.gates(),
             "warnings": self.warnings(),
+        }
+
+    def load_fixture(self, fixture_path: str) -> Dict[str, Any]:
+        """Load sample fixture JSON for offline preview / layout testing.
+
+        The fixture MUST be clearly marked as SAMPLE/PREVIEW only.
+        This does not perform any GETs and is strictly for read-only preview.
+        Returns the loaded data (caller decides how to render sections).
+        """
+        p = Path(fixture_path)
+        if not p.is_file():
+            return {
+                "error": f"Fixture not found: {fixture_path}",
+                "source": "read_surface_client",
+                "available": False,
+                "_meta": {"source": "FIXTURE_LOAD_ERROR"}
+            }
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            # Ensure preview marker is present for safety
+            meta = data.get("_meta", {})
+            if "SAMPLE_FIXTURE_PREVIEW_ONLY" not in str(meta):
+                data.setdefault("_meta", {})["note"] = (
+                    data.get("_meta", {}).get("note", "") +
+                    " [WARNING: not explicitly marked as SAMPLE_FIXTURE_PREVIEW_ONLY]"
+                )
+            data["_meta"] = data.get("_meta", {})
+            data["_meta"]["loaded_from"] = str(p)
+            self._last_fixture = data
+            return data
+        except Exception as e:
+            return {
+                "error": f"Failed to load fixture {fixture_path}: {e}",
+                "source": "read_surface_client",
+                "path": str(p),
+            }
+
+    def get_snapshot_from_fixture(self, fixture_path: str) -> Dict[str, Any]:
+        """Load fixture and return a snapshot-shaped dict using its top-level sections.
+
+        Falls back to combining known keys if fixture is a full snapshot.
+        """
+        data = self.load_fixture(fixture_path)
+        if "error" in data:
+            return data
+        # If fixture already looks like a combined snapshot from fetch_snapshot, use as-is
+        if all(k in data for k in ("health", "run_current", "stats", "receipts", "gates", "warnings")):
+            return data
+        # Otherwise wrap minimal
+        return {
+            "health": data.get("health", {"status": "FIXTURE", "read_only": True}),
+            "run_current": data.get("run_current", {}),
+            "stats": data.get("stats", {}),
+            "receipts": data.get("receipts", {}),
+            "gates": data.get("gates", {}),
+            "warnings": data.get("warnings", {}),
+            "_meta": data.get("_meta", {"source": "SAMPLE_FIXTURE_PREVIEW_ONLY"}),
         }
