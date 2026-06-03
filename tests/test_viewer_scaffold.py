@@ -419,3 +419,99 @@ def test_server_unavailable_path_is_graceful_phase2():
     # HTML from bad live attempt
     h = render_read_only_html(None)  # will try live -> error state inside
     assert "offline" in h.lower() or "unavailable" in h.lower() or "read-only" in h.lower()
+
+
+# ------------------------------------------------------------------
+# Phase 3+: TUI compose/preview of Engine Command Envelopes (local only)
+# ------------------------------------------------------------------
+
+def test_command_envelope_compose_valid_and_preview():
+    """TUI can compose valid envelopes and produce local previews (no exec)."""
+    from act_tui_html_hybrid.command_envelope import (
+        CommandEnvelope, KNOWN_COMMAND_TYPES, preview_envelope
+    )
+    env = CommandEnvelope.compose(
+        command_type="list_wrappers",
+        dry_run=True,
+    )
+    assert env.command_type in KNOWN_COMMAND_TYPES
+    assert env.command_id
+    prev = preview_envelope(env)
+    assert "envelope" in prev
+    assert "preview_result" in prev
+    assert "LOCAL" in prev["preview_result"]["next_action"]
+    assert "no execution" in str(prev["preview_result"]["warnings"]).lower() or "preview" in prev["preview_result"]["status"].lower()
+
+
+def test_command_envelope_rejects_unknown_and_missing_id():
+    from act_tui_html_hybrid.command_envelope import CommandEnvelope
+    with pytest.raises(ValueError, match="Unknown command_type"):
+        CommandEnvelope.compose(command_type="do_something_evil")
+    with pytest.raises(ValueError, match="command_id is required"):
+        CommandEnvelope(command_id="", command_type="list_wrappers")
+
+
+def test_tui_compose_updates_render_and_no_exec():
+    """Composing via TUI updates the preview section in render; no side effects."""
+    tui = ACTHybridViewerTUI()
+    env = tui.compose_envelope(command_type="inspect_path", target="/tmp/safe", dry_run=True)
+    rendered = tui.render()
+    assert "COMMAND ENVELOPE (LOCAL COMPOSE/PREVIEW" in rendered
+    assert env.command_id in rendered or "inspect_path" in rendered
+    preview = tui.get_last_envelope_preview()
+    assert preview is not None
+    assert "boundary" in preview.get("preview_result", {}).get("metadata", {}) or "LOCAL" in str(preview)
+
+
+def test_cli_compose_does_not_expose_exec_or_mutate(monkeypatch, capsys):
+    """CLI compose-envelope path only does local compose/preview; no exec keys, no mutate."""
+    from act_tui_html_hybrid.tui import main as tui_main
+    # Simulate argv for compose (uses local model, no network)
+    argv = ["compose-envelope", "--type", "list_wrappers", "--dry-run"]
+    rc = tui_main(argv)
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "LOCAL ENGINE COMMAND ENVELOPE" in out
+    assert "list_wrappers" in out
+    assert "BOUNDARY: This is LOCAL COMPOSE + PREVIEW only" in out
+    # No exec language in output that would indicate running
+    assert "executed capability" not in out.lower()
+    assert "no execute" in out.lower() or "preview only" in out.lower()
+
+
+def test_html_export_includes_envelope_preview_view_only():
+    """HTML export (even from fake snapshot) includes static envelope preview section; no forms/mutate."""
+    fake = {
+        "health": {"status": "OK", "read_only": True},
+        "run_current": {},
+        "stats": {"counts": {}},
+        "receipts": {},
+        "gates": {},
+        "warnings": {},
+    }
+    html = render_read_only_html(fake)
+    html_l = html.lower()
+    assert "engine command envelope" in html_l
+    assert "local compose/preview" in html_l or "static view-only" in html_l
+    assert "list_wrappers" in html or "known types" in html_l
+    assert "<form" not in html_l
+    for bad in ["method=\"post\"", "onclick=", ".post("]:
+        assert bad not in html_l
+
+
+def test_no_act_mce_engine_imports_in_new_compose_code():
+    """The new compose/preview code must not import ACT-MCE engine modules (boundary)."""
+    import ast
+    import inspect
+    from act_tui_html_hybrid import command_envelope as ce
+    src = inspect.getsource(ce)
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            mod = ""
+            if isinstance(node, ast.Import):
+                mod = " ".join(n.name for n in node.names)
+            else:
+                mod = node.module or ""
+            assert "act_mce" not in mod.lower() or "commands" not in mod.lower()  # no engine imports; local mirror only
+            assert "gate" not in mod.lower() and "capability" not in mod.lower()

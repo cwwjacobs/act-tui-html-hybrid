@@ -20,14 +20,25 @@ from pathlib import Path
 from typing import Any, Dict
 
 from .read_surface_client import ReadSurfaceClient
+from .command_envelope import (
+    CommandEnvelope,
+    preview_envelope,
+    KNOWN_COMMAND_TYPES,
+)
 
 
-def render_read_only_html(snapshot: Dict[str, Any] | None = None, title: str = "ACT Viewer Hybrid - Read Only Snapshot", fixture_note: str | None = None) -> str:
+def render_read_only_html(
+    snapshot: Dict[str, Any] | None = None,
+    title: str = "ACT Viewer Hybrid - Read Only Snapshot",
+    fixture_note: str | None = None,
+    envelope_preview: Dict[str, Any] | None = None,
+) -> str:
     """Return a complete, self-contained, improved HTML document for the provided snapshot.
 
     If snapshot is None, a fresh read will be attempted (still read-only).
     The output contains zero executable paths, zero mutation affordances, zero forms, zero scripts.
     Supports explicit fixture_note for SAMPLE PREVIEW banners.
+    envelope_preview: optional local compose preview (static view-only section; never executed).
     """
     if snapshot is None:
         client = ReadSurfaceClient()
@@ -112,6 +123,38 @@ def render_read_only_html(snapshot: Dict[str, Any] | None = None, title: str = "
         ev_html = f"<ul class='event-list'>{ev_html}</ul>"
     else:
         ev_html = "<p class='empty'>(no events surfaced in this snapshot)</p>"
+
+    # Static view-only envelope preview section (always included; TUI compose feeds this in real use)
+    env_section = ""
+    preview_data = envelope_preview or {
+        "envelope": {
+            "command_id": "cmd_preview_example",
+            "command_type": "list_wrappers",
+            "target": None,
+            "inputs": {},
+            "dry_run": True,
+            "requires_gate": True,
+            "requested_by": "operator",
+        },
+        "preview_result": {
+            "status": "preview",
+            "next_action": "LOCAL PREVIEW ONLY — composed in TUI, never executed or submitted here. Engine decides.",
+            "warnings": ["This is a static view-only example in the HTML export."],
+        },
+    }
+    env_section = f"""
+    <div class='preview-banner'>
+      <strong>LOCAL COMPOSE/PREVIEW EXAMPLE (TUI-side only — view-only)</strong><br>
+      This section demonstrates an Engine Command Envelope that the TUI can compose locally for operator review/preview.
+      It is static, read-only, and was <em>never executed, never submitted, never mutated</em>.
+    </div>
+    <pre>KNOWN TYPES (for TUI composition): {", ".join(sorted(KNOWN_COMMAND_TYPES))}</pre>
+    <h3>Composed Envelope (preview)</h3>
+    <pre>{json.dumps(preview_data.get('envelope', {}), indent=2, default=str)}</pre>
+    <h3>Stub Preview Result (local only)</h3>
+    <pre>{json.dumps(preview_data.get('preview_result', {}), indent=2, default=str)}</pre>
+    <p class="meta">TUI compose/preview is local. Future gated Engine API submission (if any) is decided by Engine only. HTML export remains view-only.</p>
+    """
 
     # stats table data
     counts = stats.get("counts", {})
@@ -225,6 +268,11 @@ def render_read_only_html(snapshot: Dict[str, Any] | None = None, title: str = "
     <p class="meta">Traces: {len(snapshot.get('traces',{}).get('traces', []))} — full trace details available via dedicated viewer or export in engine-controlled flows.</p>
   </div>
 
+  <div class="section">
+    <h2>Engine Command Envelope (static view-only preview)</h2>
+    {env_section}
+  </div>
+
   <div class="footer">
     <strong>BOUNDARY ENFORCED</strong>: The viewer observes. The engine decides. Gates decide advancement. Operator acceptance remains final.<br>
     Generated from read-surface data / fixture only. <strong>No POST, no shell, no mutation, no ACT-MCE engine/gate/capability imports, no approval workflow.</strong><br>
@@ -236,9 +284,16 @@ def render_read_only_html(snapshot: Dict[str, Any] | None = None, title: str = "
     return html
 
 
-def export_html_to_file(path: str, snapshot: Dict[str, Any] | None = None, fixture_note: str | None = None) -> str:
-    """Write the read-only HTML to a file and return the path. Pure side-effect free except FS write of static content."""
-    content = render_read_only_html(snapshot, fixture_note=fixture_note)
+def export_html_to_file(
+    path: str,
+    snapshot: Dict[str, Any] | None = None,
+    fixture_note: str | None = None,
+    envelope_preview: Dict[str, Any] | None = None,
+) -> str:
+    """Write the read-only HTML to a file and return the path. Pure side-effect free except FS write of static content.
+    envelope_preview: optional static view-only envelope preview data.
+    """
+    content = render_read_only_html(snapshot, fixture_note=fixture_note, envelope_preview=envelope_preview)
     outp = Path(path)
     outp.parent.mkdir(parents=True, exist_ok=True)
     outp.write_text(content, encoding="utf-8")
@@ -257,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
         argv = sys.argv[1:]
     parser = argparse.ArgumentParser(
         prog="act_tui_html_hybrid.html_export",
-        description="ACT TUI/HTML Hybrid static HTML renderer (Phase 2). Read-only. Produces self-contained HTML with no forms or scripts.",
+        description="ACT TUI/HTML Hybrid static HTML renderer (Phase 2+). Read-only view-only. Produces self-contained HTML (stats + static envelope preview) with no forms or scripts. TUI compose feeds real previews; export is always view-only.",
     )
     parser.add_argument("--base-url", default=ReadSurfaceClient.DEFAULT_BASE_URL,
                         help="Read surface base (used only if no --fixture)")
@@ -265,7 +320,7 @@ def main(argv: list[str] | None = None) -> int:
                         help="Sample fixture JSON (PREVIEW ONLY) to render instead of live read")
     parser.add_argument("--out", default="dist/act_viewer_snapshot.html",
                         help="Output path for the static HTML file (default: %(default)s)")
-    parser.add_argument("--title", default="ACT Viewer Hybrid - Read Only Snapshot (Phase 2)",
+    parser.add_argument("--title", default="ACT Viewer Hybrid - Read Only Snapshot (Phase 2+)",
                         help="HTML document title")
     args = parser.parse_args(argv)
 
@@ -283,9 +338,14 @@ def main(argv: list[str] | None = None) -> int:
     else:
         snap = client.fetch_snapshot()
 
-    out_path = export_html_to_file(args.out, snap, fixture_note=f_note)
-    print(f"Wrote static read-only HTML to: {out_path}")
-    print("Open the file in a browser. It contains no active elements or write paths.")
+    # Always include a static view-only sample envelope preview (TUI compose can provide richer ones in practice)
+    sample_env = preview_envelope(
+        CommandEnvelope.compose(command_type="list_wrappers", dry_run=True)
+    )
+    out_path = export_html_to_file(args.out, snap, fixture_note=f_note, envelope_preview=sample_env)
+    print(f"Wrote static read-only (view-only) HTML to: {out_path}")
+    print("Open the file in a browser. It contains no active elements, no forms, no scripts, no write paths.")
+    print("Includes static Engine Command Envelope preview section (local compose example only).")
     return 0
 
 
