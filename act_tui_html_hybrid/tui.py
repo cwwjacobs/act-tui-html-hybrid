@@ -2,19 +2,21 @@
 Phase 2 TUI for ACT TUI/HTML Hybrid viewer (refined visual/readability; current scaffold).
 
 **Current scaffold phase:** Displays improved layout of read/render-only sections from the read surface or sample fixtures.
-TUI here is read/render-only. Clear unavailable/offline states. No request submission implemented.
+TUI here supports OBSERVATION + LOCAL COMPOSE/PREVIEW of Engine Command Envelopes (for ACT-MCE).
+Clear unavailable/offline states. Compose/preview is local only (no submission path, no execution).
 
 **Future target role for TUI:** operator request/input surface (gated Engine command API only; not in this repo/phase).
+Composition here prepares envelopes that *could* be submitted later via the gated seam.
 
-The viewer observes (current). The engine decides. Gates decide advancement.
+The viewer observes (current) + composes envelopes locally. The engine decides. Gates decide advancement.
 Operator acceptance remains final.
 
 Forbidden in this module (permanent + current):
-- No execute, approve, advance, run, mutate actions exposed.
+- No execute, approve, advance, run, mutate, or *submission* actions exposed.
 - No direct execution/mutation/gate bypass/receipt writing/self-approve (ever).
-- All display and refresh are read-only (current posture).
+- All display/refresh/compose are read-only or local-preview (current posture).
 - Uses only the ReadSurfaceClient (GET only) or fixture loads (preview).
-- No cockpit/control language or command submission (current; future gated requests only, never direct).
+- No real command submission (current; future gated requests only via Engine API, never direct).
 """
 
 from __future__ import annotations
@@ -22,9 +24,16 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .read_surface_client import ReadSurfaceClient
+from .command_envelope import (
+    CommandEnvelope,
+    CommandResult,
+    CommandType,
+    KNOWN_COMMAND_TYPES,
+    preview_envelope,
+)
 
 
 class ACTHybridViewerTUI:
@@ -53,6 +62,9 @@ class ACTHybridViewerTUI:
         self._connected = False
         self._offline = False
         self._fixture_used = False
+        # Local compose/preview state (never submitted, never executed, never mutated)
+        self._composed_envelopes: list[CommandEnvelope] = []
+        self._last_preview: Optional[Dict[str, Any]] = None
 
     def refresh(self, fixture_path: str | None = None) -> Dict[str, Any]:
         """Pull fresh read-only data (or fixture). Never mutates. Sets clear offline flag."""
@@ -225,21 +237,89 @@ class ACTHybridViewerTUI:
         lines.extend(self._box("TRACES", tr_lines))
         lines.append("")
 
+        # COMMAND ENVELOPE COMPOSER (local TUI preview only — never submitted/executed here)
+        if self._last_preview:
+            env = self._last_preview.get("envelope", {})
+            res = self._last_preview.get("preview_result", {})
+            comp_lines = [
+                f"command_id: {env.get('command_id', 'n/a')}",
+                f"type: {env.get('command_type', 'n/a')}  target: {env.get('target') or '(none)'}",
+                f"dry_run: {env.get('dry_run', False)}  requires_gate: {env.get('requires_gate', True)}",
+                f"inputs: {json.dumps(env.get('inputs', {}))[:60]}...",
+            ]
+            lines.extend(self._box("COMMAND ENVELOPE (LOCAL COMPOSE/PREVIEW — TUI only)", comp_lines))
+            prev_lines = [
+                f"preview_status: {res.get('status', 'n/a')}",
+                f"next_action: {res.get('next_action', '')[:65]}",
+            ]
+            if res.get("warnings"):
+                prev_lines.append(f"warnings: {res['warnings'][0][:50]}...")
+            lines.extend(self._box("PREVIEW RESULT (stub — no Engine execution)", prev_lines))
+            lines.append(self._c("  (Use CLI 'compose-envelope' to create new previews. This surface does not submit.)", self.DIM))
+        else:
+            lines.extend(self._box("COMMAND ENVELOPE COMPOSER", [
+                "(no envelope composed in this session yet)",
+                "Use CLI: ... tui compose-envelope --type list_wrappers ...",
+                "Local preview only. Engine decides on any future submit.",
+            ]))
+        lines.append("")
+
         # Footer controls / boundary (no actions)
         lines.append(self._c("─" * 78, self.DIM))
         lines.append(self._c("KEYS (read-only placeholder): [r]efresh  [q]uit   |  No execute / approve / advance exposed.", self.DIM))
-        lines.append(self._c("This surface OBSERVES only. Engine decides. Operator acceptance remains final.", self.BOLD))
+        lines.append(self._c("This surface OBSERVES + COMPOSES (envelopes) only. Engine decides. Operator acceptance remains final.", self.BOLD))
         if self._fixture_used:
             lines.append(self._c("FIXTURE MODE: Sample data for preview. See _meta in data for provenance.", self.YELLOW))
+        if self._composed_envelopes:
+            lines.append(self._c(f"COMPOSED: {len(self._composed_envelopes)} local envelope(s) for preview (not sent).", self.CYAN))
         lines.append(self._c("─" * 78, self.DIM))
         return "\n".join(lines)
+
+    # --- NEW: Local compose / preview for Engine Command Envelopes (TUI-side only) ---
+    # These methods allow the TUI to *compose* and *preview* envelopes locally.
+    # NEVER executes, NEVER mutates ACT-MCE, NEVER submits (no write client here).
+    # Previews use the local model + stub result for operator awareness.
+    # Future: these may be sent via gated Engine command API (outside this repo).
+
+    def compose_envelope(
+        self,
+        command_type: str,
+        target: Optional[str] = None,
+        inputs: Optional[Dict[str, Any]] = None,
+        requested_by: str = "operator",
+        requires_gate: bool = True,
+        dry_run: bool = False,
+        command_id: Optional[str] = None,
+    ) -> CommandEnvelope:
+        """Compose (and store) a CommandEnvelope locally for preview."""
+        env = CommandEnvelope.compose(
+            command_type=command_type,
+            target=target,
+            inputs=inputs,
+            requested_by=requested_by,
+            requires_gate=requires_gate,
+            dry_run=dry_run,
+            command_id=command_id,
+        )
+        self._composed_envelopes.append(env)
+        self._last_preview = preview_envelope(env)
+        return env
+
+    def get_last_envelope_preview(self) -> Optional[Dict[str, Any]]:
+        """Return the most recent local compose preview (envelope + stub result)."""
+        return self._last_preview
+
+    def clear_composed(self) -> None:
+        """Clear local composed state (purely for this TUI session preview)."""
+        self._composed_envelopes.clear()
+        self._last_preview = None
 
     def run(self, auto_refresh: bool = True, fixture_path: str | None = None) -> None:
         """Run a single-pass refined render (read-only)."""
         if auto_refresh:
             self.refresh(fixture_path=fixture_path)
         print(self.render())
-        print(self._c("\n(Observation surface only. Single-pass placeholder. No controls for execution/approval/advancement.)", self.DIM))
+        print(self._c("\n(Observation + compose/preview surface only. Single-pass placeholder. No controls for execution/approval/advancement/submission.)", self.DIM))
 
     # Explicitly no mutation surfaces
     # Intentionally omitted: execute, approve, advance, request_run, mutate, etc.
@@ -248,19 +328,23 @@ class ACTHybridViewerTUI:
 def main(argv: list[str] | None = None) -> int:
     """CLI entry for python -m act_tui_html_hybrid.tui
 
-    Supports read-only display commands only:
-      (default)          full refined TUI render of current or fixture
+    Supports:
+      (default)          full refined TUI render of current or fixture (includes local envelope composer section if used)
       show-health        print health only
       show-current       print run_current snapshot
       show-stats         print stats
-    All use --base-url or --fixture for offline preview.
-    Never submits commands, never mutates.
+      compose-envelope   COMPOSE + PREVIEW a local Engine Command Envelope (for ACT-MCE).
+                         --type (required, from known list), --target, --inputs (json or k=v), --dry-run, --no-gate, --id
+                         Produces pretty JSON of envelope + stub preview result.
+                         LOCAL ONLY. Validates. NEVER executes, NEVER mutates, NEVER submits (no write path here).
+    All use --base-url or --fixture for offline preview (state observation).
+    Never executes, never mutates, never submits.
     """
     if argv is None:
         argv = sys.argv[1:]
     parser = argparse.ArgumentParser(
         prog="act_tui_html_hybrid.tui",
-        description="ACT TUI/HTML Hybrid - read-only observation TUI (Phase 2). No execution or mutation.",
+        description="ACT TUI/HTML Hybrid - read-only observation + local envelope compose/preview TUI. No execution, no mutation, no submission.",
     )
     parser.add_argument("--base-url", default=ReadSurfaceClient.DEFAULT_BASE_URL,
                         help="ACT-MCE read surface base URL (default: %(default)s)")
@@ -271,6 +355,19 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("show-health", help="Show only health status (read surface or fixture)")
     sub.add_parser("show-current", help="Show run_current snapshot (read-only)")
     sub.add_parser("show-stats", help="Show aggregate stats (read-only)")
+
+    # Compose/preview subcommand (local TUI only; produces no side effects, no network writes)
+    compose_p = sub.add_parser(
+        "compose-envelope",
+        help="Compose and preview a local Engine Command Envelope (for ACT-MCE). Validation + pretty JSON preview + stub result. NEVER executes or submits.",
+    )
+    compose_p.add_argument("--type", required=True, choices=sorted(KNOWN_COMMAND_TYPES),
+                           help="Command type (must be known to ACT-MCE Engine)")
+    compose_p.add_argument("--target", default=None, help="Optional target for the command (e.g. agent id, path, schema)")
+    compose_p.add_argument("--inputs", default="{}", help="JSON string for inputs dict, or key=val,key2=val2")
+    compose_p.add_argument("--dry-run", action="store_true", help="Mark as dry_run (preview only)")
+    compose_p.add_argument("--no-gate", action="store_true", help="Set requires_gate=false (Engine would still decide)")
+    compose_p.add_argument("--id", default=None, help="Optional explicit command_id (auto-generated if omitted)")
 
     args = parser.parse_args(argv)
 
@@ -302,13 +399,46 @@ def main(argv: list[str] | None = None) -> int:
         st = snap.get("stats", {})
         print("STATS (read-only):")
         print(json.dumps(st, indent=2, default=str))
+    elif cmd == "compose-envelope":
+        # Local compose + preview ONLY. Parse inputs flexibly.
+        try:
+            if args.inputs.strip().startswith("{"):
+                inputs = json.loads(args.inputs)
+            else:
+                # simple key=val,key2=val2 parser
+                inputs = {}
+                for pair in args.inputs.split(","):
+                    if "=" in pair:
+                        k, v = pair.split("=", 1)
+                        inputs[k.strip()] = v.strip()
+            env = tui.compose_envelope(
+                command_type=args.type,
+                target=args.target,
+                inputs=inputs,
+                dry_run=args.dry_run,
+                requires_gate=not args.no_gate,
+                command_id=args.id,
+            )
+            preview = tui.get_last_envelope_preview() or {}
+            print("=== LOCAL ENGINE COMMAND ENVELOPE (COMPOSED/PREVIEW — TUI only) ===")
+            print("ENVELOPE:")
+            print(env.to_json())
+            print("\nPREVIEW RESULT (stub, local only; no Engine call, no execution, no mutation):")
+            print(json.dumps(preview.get("preview_result", {}), indent=2, default=str))
+            print("\n" + "─" * 60)
+            print("BOUNDARY: This is LOCAL COMPOSE + PREVIEW only. Never executed. Never submitted.")
+            print("Engine Command Manager (ACT-MCE) will validate/gate/decide on any future gated submit.")
+        except Exception as e:
+            print(f"COMPOSE ERROR: {e}")
+            print("Valid types:", sorted(KNOWN_COMMAND_TYPES))
+            return 1
     else:
         # full refined TUI view
         tui.run(auto_refresh=False, fixture_path=fixture if fixture else None)
 
     # Always remind boundary on CLI use
     print("\n" + "─" * 60)
-    print("OBSERVATION ONLY — no execute, approve, advance, or mutation performed.")
+    print("OBSERVATION + COMPOSE/PREVIEW ONLY — no execute, approve, advance, submission, or mutation performed.")
     return 0
 
 
